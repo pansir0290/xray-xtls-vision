@@ -40,7 +40,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/pansir0290/xray-xtls-vision/
 ```
 anytls版
 ```bash
-bash <(curl -fsSL https://github.com/pansir0290/xray-xtls-vision/blob/main/anytls
+bash <(curl -fsSL https://raw.githubusercontent.com/pansir0290/xray-xtls-vision/main/anytls.sh)
 ```
 脚本会采用**人机交互**方式，引导你输入域名和邮箱，随后全自动完成 Caddy 与 Xray 的安装、环境冲突清理、证书申请、配置文件联动及伪装站构建。
 
