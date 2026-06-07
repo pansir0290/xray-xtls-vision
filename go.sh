@@ -1,4 +1,3 @@
-cat << 'EOF' > xray_caddy_ultimate.sh
 #!/bin/bash
 
 # 颜色控制
