@@ -1,0 +1,210 @@
+cat << 'EOF' > /root/install_anytls.sh
+#!/bin/bash
+
+# =================================================================
+# 🎬 Sing-box + AnyTLS + Caddy 真实视频站回落一体化部署脚本 (含单行链接输出)
+# 适用系统: Debian 11+ / Ubuntu 20.04+ (必须以 root 用户运行)
+# =================================================================
+
+# 1. 权限与交互式参数获取
+if [ "$EUID" -ne 0 ]; then
+    echo "❌ 错误：请切换至 root 用户后再运行此脚本！"
+    exit 1
+fi
+
+clear
+echo "========================================================="
+echo "   🛡️  Sing-box (AnyTLS) + Caddy 阳谋一体化完全体脚本"
+echo "========================================================="
+echo " 提示：本脚本在最后会自动生成并打印 anytls:// 格式的单行链接。"
+echo "---------------------------------------------------------"
+
+read -p "👉 请输入你已解析到本机的自建域名 (如 video.pansir.com): " DOMAIN
+if [ -z "$DOMAIN" ]; then
+    echo "❌ 域名不能为空，脚本退出。"
+    exit 1
+fi
+
+read -p "👉 请输入用于申请 SSL 证书的邮箱 (如 admin@pansir.com): " EMAIL
+if [ -z "$EMAIL" ]; then
+    echo "❌ 邮箱不能为空，脚本退出。"
+    exit 1
+fi
+
+# 2. 毁灭级环境清理（防止旧进程霸占 80/443 端口导致证书和新服务死锁）
+echo "🔄 正在深度清理环境，强制释放 80/443 端口..."
+systemctl stop xray v2ray caddy nginx apache2 sing-box 2>/dev/null
+systemctl disable xray v2ray caddy nginx apache2 sing-box 2>/dev/null
+apt-get purge caddy nginx apache2 -y 2>/dev/null
+rm -rf /etc/caddy /etc/nginx /var/www/html
+
+# 安装必要的基础依赖工具
+apt-get update && apt-get install psmisc lsof curl socat xz-utils gnupg -y
+fuser -k 80/tcp 2>/dev/null
+fuser -k 443/tcp 2>/dev/null
+
+# 3. 安装 Caddy 服务 (用作后端回落伪装)
+echo "📦 正在安装 Caddy 网页服务器..."
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg 2>/dev/null
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list >/dev/null
+apt-get update && apt-get install caddy -y
+systemctl stop caddy 2>/dev/null
+
+# 4. 安装 Sing-box 官方最新版
+echo "📦 正在配置并安装 Sing-box 官方源..."
+mkdir -p /etc/apt/keyrings
+curl -fsSL https://sing-box.sagernet.org/apt-keyring.gpg -o /etc/apt/keyrings/sagernet.gpg
+echo "deb [signed-by=/etc/apt/keyrings/sagernet.gpg] https://deb.sagernet.org/ squash main" | tee /etc/apt/sources.list.d/sagernet.list >/dev/null
+apt-get update && apt-get install sing-box -y
+systemctl stop sing-box 2>/dev/null
+
+# 5. 纯本地构建 Caddy 伪装视频素材站（锁在 8080 端口）
+echo "🎬 正在本地生成虚拟大视频文件，演戏演到极致..."
+rm -rf /var/www/video && mkdir -p /var/www/video
+
+# 利用 Linux 底层瞬间“画出” 100M 和 150M 的高清视频伪装文件（耗时不到 1 秒）
+dd if=/dev/zero of=/var/www/video/Tokyo_Night_1080P.mp4 bs=1M count=100 2>/dev/null
+dd if=/dev/zero of=/var/www/video/Cinematic_4K_Trailer.mkv bs=1M count=150 2>/dev/null
+
+# 写入纯净无后门的暗黑科技风 index.html
+cat << 'EOF' > /var/www/video/index.html
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>4K流媒体超清素材库 - 内部备份节点</title>
+    <style>
+        body { background-color: #111111; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; padding: 40px; text-align: center; }
+        .box { max-width: 750px; margin: 40px auto; background: #1a1a1a; padding: 35px; border-radius: 12px; box-shadow: 0 4px 25px rgba(0,0,0,0.6); border: 1px solid #2d2d2d; }
+        h1 { color: #ff2a5f; font-size: 26px; margin-bottom: 5px; }
+        p { color: #888; font-size: 14px; margin-bottom: 35px; }
+        .list { text-align: left; background: #222222; padding: 20px; border-radius: 8px; border: 1px solid #333; }
+        .item { display: flex; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid #2d2d2d; }
+        .item:last-child { border-bottom: none; }
+        a { color: #00adb5; text-decoration: none; font-weight: bold; }
+        a:hover { color: #00fff5; text-decoration: underline; }
+        .size { color: #666; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h1>🎬 4K/1080P 流媒体视效素材内部备份站</h1>
+        <p>⚠️ 安全提示：本站仅供内部编导团队下载测试，外部不提供公网索引，且对未授权IP执行限速。</p>
+        <div class="list">
+            <div class="item">
+                <a href="./Tokyo_Night_1080P.mp4">📄 Tokyo_Street_Night_1080P_Raw.mp4</a>
+                <span class="size">100.00 MB</span>
+            </div>
+            <div class="item">
+                <a href="./Cinematic_4K_Trailer.mkv">📄 Cinematic_4K_HDR_Demo_Trailer.mkv</a>
+                <span class="size">150.00 MB</span>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+EOF
+
+# 写入后端 Caddyfile
+cat << EOF > /etc/caddy/Caddyfile
+:8080 {
+    root * /var/www/video
+    file_server
+    encode gzip zstd
+}
+EOF
+
+# 6. 通过 acme.sh 独立模式申请真实 ECC 证书
+echo "🌐 正在通过 acme.sh 申请 Let's Encrypt 证书..."
+curl https://get.acme.sh | sh -s email=$EMAIL
+source ~/.bashrc
+
+CERT_DIR="/var/lib/sing-box/certs"
+mkdir -p $CERT_DIR
+
+~/.acme.sh/acme.sh --upgrade --auto-upgrade
+~/.acme.sh/acme.sh --set-default-ca --server letsencrypt
+~/.acme.sh/acme.sh --issue -d $DOMAIN --standalone --keylength ec-256
+
+# 将证书规范安装到 Sing-box 目录下，并确保持续更新后自动赋予权限并重启系统服务
+~/.acme.sh/acme.sh --install-cert -d $DOMAIN --ecc \
+    --fullchain-file $CERT_DIR/fullchain.pem \
+    --key-file $CERT_DIR/private.key \
+    --reloadcmd "chown -R sing-box:sing-box $CERT_DIR && systemctl restart sing-box"
+
+# 7. 配置 Sing-box 入站（AnyTLS 协议 + 探测回落）
+echo "⚙️  正在生成 Sing-box 核心配置文件..."
+PASSWORD=$(tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c 16)
+
+cat << EOF > /etc/sing-box/config.json
+{
+  "log": {
+    "level": "info",
+    "timestamp": true
+  },
+  "inbounds": [
+    {
+      "type": "anytls",
+      "tag": "anytls-in",
+      "listen": "::",
+      "listen_port": 443,
+      "users": [
+        {
+          "name": "pansir_user",
+          "password": "$PASSWORD"
+        }
+      ],
+      "tls": {
+        "enabled": true,
+        "server_name": "$DOMAIN",
+        "certificate_path": "$CERT_DIR/fullchain.pem",
+        "key_path": "$CERT_DIR/private.key"
+      },
+      "fallback": {
+        "server": "127.0.0.1",
+        "server_port": 8080
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ]
+}
+EOF
+
+# 8. 权限同步与服务整体刷新启动
+echo "🚀 正在启动服务群组，完成天衣无缝的闭环..."
+chown -R caddy:caddy /var/www/video
+chown -R sing-box:sing-box $CERT_DIR
+
+systemctl daemon-reload
+systemctl restart caddy && systemctl enable caddy
+systemctl restart sing-box && systemctl enable sing-box
+
+# 9. 打印大功告成面板
+clear
+echo -e "\033[0;32m========================================================="
+echo -e "🎉 成功！Sing-box + AnyTLS + Caddy 一体化完全体部署完成！"
+echo -e "=========================================================\033[0m"
+echo -e "📣 你的服务器 AnyTLS 节点配置参数如下："
+echo ""
+echo -e " 🔹 服务器地址 (Address):  \033[1;36m$DOMAIN\033[0m"
+echo -e " 🔹 端口 (Port):          \033[1;36m443\033[0m"
+echo -e " 🔹 密码 (Password):      \033[1;33m$PASSWORD\033[0m"
+echo ""
+echo -e "---------------------------------------------------------"
+echo -e "🔗 专为你定制的 AnyTLS 协议单行链接（拿去转换使用）："
+echo -e " \033[1;32manytls://$PASSWORD@$DOMAIN:443?sni=$DOMAIN&type=anytls#AnyTLS-阳谋视频站\033[0m"
+echo -e "---------------------------------------------------------"
+echo -e "🛠️  日常运维指令："
+echo -e " 状态查看: systemctl status sing-box | systemctl status caddy"
+echo -e " 重启节点: systemctl restart sing-box"
+echo -e " 网页根目录: /var/www/video/"
+echo -e "========================================================="
+EOF
+
+chmod +x /root/install_anytls.sh
+/root/install_anytls.sh
