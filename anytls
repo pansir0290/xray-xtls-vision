@@ -1,38 +1,49 @@
 #!/bin/bash
 
 # =================================================================
-# 🎬 Sing-box + AnyTLS + Caddy 阳谋一体化完全体 (最新版 1.11+ 兼容)
+# 🎬 完整版：Sing-box + AnyTLS + Caddy 一键部署脚本
+# 适用系统: Debian 11+ / Ubuntu 20.04+
 # =================================================================
 
+# 0. 检查权限
 if [ "$EUID" -ne 0 ]; then echo "❌ 请使用 root 权限运行"; exit 1; fi
 
-# 1. 获取参数
-read -p "请输入域名: " DOMAIN
-read -p "请输入邮箱: " EMAIL
+# 1. 获取参数 (非交互式处理)
+read -p "👉 输入域名: " DOMAIN
+read -p "👉 输入邮箱: " EMAIL
 PASSWORD=$(tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c 16)
 
-# 2. 彻底清理与依赖安装
+# 2. 清理旧环境
+echo "🔄 清理旧服务..."
 systemctl stop sing-box caddy 2>/dev/null
-apt-get update && apt-get install -y curl socat psmisc
+apt-get purge -y sing-box caddy 2>/dev/null
+rm -rf /etc/sing-box /etc/caddy /var/lib/sing-box/certs
 
-# 3. 安装 Caddy
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg 2>/dev/null
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list >/dev/null
+# 3. 安装依赖与工具
+echo "📦 安装依赖..."
+apt-get update && apt-get install -y curl socat psmisc gnupg
+
+# 4. 安装 Caddy
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/caddy-stable-archive-keyring.gpg] https://dl.cloudsmith.io/public/caddy/stable/deb/debian any-version main" | tee /etc/apt/sources.list.d/caddy-stable.list
 apt-get update && apt-get install -y caddy
 
-# 4. 获取 Sing-box 最新版 (避开不稳定的软件源)
-LATEST_VERSION=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' | sed 's/v//')
-curl -Lo /tmp/sing-box.deb "https://github.com/SagerNet/sing-box/releases/download/v${LATEST_VERSION}/sing-box_${LATEST_VERSION}_linux_amd64.deb"
-dpkg -i /tmp/sing-box.deb
+# 5. 下载最新 Sing-box
+echo "📥 下载 Sing-box..."
+LATEST=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' | sed 's/v//')
+curl -Lo /tmp/sb.deb "https://github.com/SagerNet/sing-box/releases/download/v${LATEST}/sing-box_${LATEST}_linux_amd64.deb"
+dpkg -i /tmp/sb.deb
 
-# 5. 申请证书
-curl https://get.acme.sh | sh -s email=$EMAIL
+# 6. 申请证书
+echo "🌐 申请证书..."
+curl https://get.acme.sh | sh
 ~/.acme.sh/acme.sh --set-default-ca --server letsencrypt
 ~/.acme.sh/acme.sh --issue -d $DOMAIN --standalone --keylength ec-256
 mkdir -p /var/lib/sing-box/certs
 ~/.acme.sh/acme.sh --install-cert -d $DOMAIN --ecc --fullchain-file /var/lib/sing-box/certs/fullchain.pem --key-file /var/lib/sing-box/certs/private.key
 
-# 6. 生成最新版兼容配置 (采用最新 SNI 回落逻辑)
+# 7. 写入配置 (确保语法兼容)
+echo "⚙️  配置核心..."
 mkdir -p /etc/sing-box
 cat << EOF > /etc/sing-box/config.json
 {
@@ -52,25 +63,30 @@ cat << EOF > /etc/sing-box/config.json
       }
     }
   ],
+  "route": {
+    "auto_detect_interface": true,
+    "rules": [ { "action": "sniff" } ]
+  },
   "outbounds": [ { "type": "direct", "tag": "direct" } ]
 }
 EOF
 
-# 7. 配置 Caddy 伪装并启动
+# 8. 配置 Caddy 伪装
 cat << EOF > /etc/caddy/Caddyfile
 $DOMAIN {
     reverse_proxy localhost:8080
 }
 :8080 {
-    respond "Not Found" 404
+    respond "Hello World"
 }
 EOF
 
+# 9. 启动服务
+echo "🚀 启动服务..."
+systemctl daemon-reload
+systemctl enable --now caddy sing-box
 systemctl restart caddy sing-box
-systemctl enable caddy sing-box
 
-# 8. 输出结果
-clear
 echo "========================================================="
 echo "✅ 部署完成！"
 echo "链接: anytls://$PASSWORD@$DOMAIN:443?sni=$DOMAIN&type=anytls#AnyTLS-阳谋"
