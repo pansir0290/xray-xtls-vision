@@ -34,11 +34,15 @@
 ## 🚀 一键安装命令
 
 在你的**海外落地服务器**上，切换至 `root` 用户，直接复制并运行以下命令：
-
+vless版
 ```bash
-bash <(curl -fsSL [https://raw.githubusercontent.com/pansir0290/xray-xtls-vision/main/go.sh](https://raw.githubusercontent.com/pansir0290/xray-xtls-vision/main/go.sh))
+bash <(curl -fsSL https://raw.githubusercontent.com/pansir0290/xray-xtls-vision/main/go.sh
 ```
-
+anytls版
+```bash
+bash <(curl -fsSL
+https://github.com/pansir0290/xray-xtls-vision/blob/main/anytls
+```
 脚本会采用**人机交互**方式，引导你输入域名和邮箱，随后全自动完成 Caddy 与 Xray 的安装、环境冲突清理、证书申请、配置文件联动及伪装站构建。
 
 ---
