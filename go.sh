@@ -1,37 +1,25 @@
 #!/bin/bash
 
-# 检查权限
-[[ $EUID -ne 0 ]] && echo "❌ 必须使用 root 权限运行" && exit 1
+# 1. 彻底暴力清理
+systemctl stop xray sing-box caddy 2>/dev/null
+killall -9 xray sing-box caddy 2>/dev/null
+rm -rf /usr/local/etc/xray /etc/caddy /usr/local/bin/xray /usr/local/bin/sing-box /var/www/html/* 2>/dev/null
 
-# 1. 人机互动输入
-read -p "请输入你的域名 (如 video.yourdomain.com): " DOMAIN
-read -p "请输入你的电子邮箱: " EMAIL
-
-if [[ -z "$DOMAIN" || -z "$EMAIL" ]]; then
-    echo "❌ 域名和邮箱不能为空！"
-    exit 1
-fi
-
-echo "🚀 开始一键部署，请稍候..."
-
-# 2. 强制清理旧环境
-systemctl stop xray caddy 2>/dev/null
-rm -rf /usr/local/etc/xray /etc/caddy /var/www/html/* 2>/dev/null
-
-# 3. 安装依赖
+# 2. 基础安装
 apt-get update -y && apt-get install -y curl socat jq
 
-# 4. 安装 Xray (官方安装脚本)
+# 3. 安装 Xray & Caddy
 bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
-
-# 5. 安装 Caddy
 curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
 echo "deb [signed-by=/usr/share/keyrings/caddy-stable-archive-keyring.gpg] https://dl.cloudsmith.io/public/caddy/stable/deb/debian any-version main" | tee /etc/apt/sources.list.d/caddy-stable.list
 apt-get update -y && apt-get install caddy -y
 
-# 6. 申请证书
+# 4. 获取域名邮箱
+read -p "请输入域名: " DOMAIN
+read -p "请输入邮箱: " EMAIL
+
+# 5. 申请证书
 curl https://get.acme.sh | sh
-source ~/.bashrc
 ~/.acme.sh/acme.sh --set-default-ca --server letsencrypt
 ~/.acme.sh/acme.sh --issue -d "$DOMAIN" --standalone --ecc
 mkdir -p /usr/local/etc/xray
@@ -39,7 +27,7 @@ mkdir -p /usr/local/etc/xray
     --key-file /usr/local/etc/xray/xray.key \
     --fullchain-file /usr/local/etc/xray/xray.crt
 
-# 7. 生成配置文件
+# 6. 配置生成
 UUID=$(xray uuid)
 cat << EOF > /usr/local/etc/xray/config.json
 {
@@ -70,17 +58,18 @@ cat << EOF > /etc/caddy/Caddyfile
 }
 EOF
 
-# 8. 修复核心权限 (解决 Permission Denied 的关键步骤)
+# 7. 最终启动与权限修复
 chown -R nobody:nogroup /usr/local/etc/xray
 chmod 644 /usr/local/etc/xray/xray.crt /usr/local/etc/xray/xray.key
-chmod 644 /usr/local/etc/xray/config.json
-
-# 9. 启动服务
-systemctl enable --now xray caddy
 systemctl restart xray caddy
 
-echo "========================================="
-echo "✅ 部署完成！"
-echo "UUID: $UUID"
-echo "链接: vless://$UUID@$DOMAIN:443?encryption=none&security=tls&flow=xtls-rprx-vision&sni=$DOMAIN#XTLS-Vision"
-echo "注意：请确保 Cloudflare 域名解析为“仅限 DNS”（灰色小云朵）"
+# 8. 强力输出节点链接
+clear
+echo -e "\n========================================="
+echo -e "✅ 部署完成！以下是你的节点信息："
+echo -e "-----------------------------------------"
+echo -e "UUID : $UUID"
+echo -e "链接 : vless://$UUID@$DOMAIN:443?encryption=none&security=tls&flow=xtls-rprx-vision&sni=$DOMAIN#XTLS-Vision-Final"
+echo -e "-----------------------------------------"
+echo -e "提示: 如果不通，请确认 Cloudflare 已关闭小黄云(仅DNS)"
+echo -e "========================================="
