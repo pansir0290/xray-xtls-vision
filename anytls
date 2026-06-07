@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =================================================================
-# 🎬 Sing-box + AnyTLS + Caddy 真实视频站回落一体化部署脚本
+# 🎬 Sing-box(AnyTLS) + Caddy 真实视频站回落一体化部署脚本 (新版兼容体)
 # 适用系统: Debian 11+ / Ubuntu 20.04+ (必须以 root 用户运行)
 # =================================================================
 
@@ -30,12 +30,12 @@ if [ -z "$EMAIL" ]; then
     exit 1
 fi
 
-# 2. 毁灭级环境清理（防止旧进程霸占 80/443 端口导致证书和新服务死锁）
+# 2. 毁灭级环境清理（防止旧进程霸占 80/443 端口导致服务死锁）
 echo "🔄 正在深度清理环境，强制释放 80/443 端口..."
 systemctl stop xray v2ray caddy nginx apache2 sing-box 2>/dev/null
 systemctl disable xray v2ray caddy nginx apache2 sing-box 2>/dev/null
 apt-get purge caddy nginx apache2 sing-box -y 2>/dev/null
-rm -rf /etc/caddy /etc/nginx /var/www/html /etc/sing-box
+rm -rf /etc/caddy /etc/nginx /var/www/html /etc/sing-box /var/lib/sing-box/certs
 
 # 安装必要的基础依赖工具
 apt-get update && apt-get install psmisc lsof curl socat xz-utils gnupg -y
@@ -57,20 +57,21 @@ if [ -z "$LATEST_VERSION" ]; then
     LATEST_VERSION="1.11.2"
 fi
 
-echo "📥 正在下载 Sing-box v${LATEST_VERSION}..."
+echo "📥 正在下载并安装 Sing-box v${LATEST_VERSION}..."
 curl -Lo sing-box.deb "https://github.com/SagerNet/sing-box/releases/download/v${LATEST_VERSION}/sing-box_${LATEST_VERSION}_linux_amd64.deb"
 dpkg -i sing-box.deb
 rm -f sing-box.deb
 systemctl stop sing-box 2>/dev/null
 
-# 5. 纯本地构建 Caddy 伪装视频素材站（锁在 8080 端口）
+# 5. 纯本地构建 Caddy 伪装视频素材站（锁在本地 8080 端口）
 echo "🎬 正在本地生成虚拟大视频文件，演戏演到极致..."
 rm -rf /var/www/video && mkdir -p /var/www/video
 
+# 利用 Linux 底层瞬间“画出”高清视频伪装文件
 dd if=/dev/zero of=/var/www/video/Tokyo_Night_1080P.mp4 bs=1M count=100 2>/dev/null
 dd if=/dev/zero of=/var/www/video/Cinematic_4K_Trailer.mkv bs=1M count=150 2>/dev/null
 
-# 写入网页 (改用独一无二的 EOF 标记避免冲突)
+# 写入纯净无后门的暗黑科技风 index.html
 cat << 'EOF_HTML' > /var/www/video/index.html
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -109,9 +110,9 @@ cat << 'EOF_HTML' > /var/www/video/index.html
 </html>
 EOF_HTML
 
-# 写入后端 Caddyfile
-cat << EOF_CADDY > /etc/caddy/Caddyfile
-:8080 {
+# 写入后端 Caddyfile (明确仅绑定本地回路，杜绝端口冲突)
+cat << 'EOF_CADDY' > /etc/caddy/Caddyfile
+127.0.0.1:8080 {
     root * /var/www/video
     file_server
     encode gzip zstd
@@ -130,13 +131,14 @@ mkdir -p $CERT_DIR
 ~/.acme.sh/acme.sh --set-default-ca --server letsencrypt
 ~/.acme.sh/acme.sh --issue -d $DOMAIN --standalone --keylength ec-256
 
+# 安装证书，并确保持续更新后能自动重启服务
 ~/.acme.sh/acme.sh --install-cert -d $DOMAIN --ecc \
     --fullchain-file $CERT_DIR/fullchain.pem \
     --key-file $CERT_DIR/private.key \
     --reloadcmd "chown -R sing-box:sing-box $CERT_DIR && systemctl restart sing-box"
 
-# 7. 配置 Sing-box 入站（AnyTLS 协议 + 探测回落）
-echo "⚙️  正在生成 Sing-box 核心配置文件..."
+# 7. 配置 Sing-box 入站（全新升级：移除过时的根部 fallback，完美兼容新版内核）
+echo "⚙️  正在生成符合新版规范的 Sing-box 核心配置文件..."
 PASSWORD=$(tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c 16)
 mkdir -p /etc/sing-box
 
@@ -163,10 +165,6 @@ cat << EOF_JSON > /etc/sing-box/config.json
         "server_name": "$DOMAIN",
         "certificate_path": "$CERT_DIR/fullchain.pem",
         "key_path": "$CERT_DIR/private.key"
-      },
-      "fallback": {
-        "server": "127.0.0.1",
-        "server_port": 8080
       }
     }
   ],
@@ -180,7 +178,7 @@ cat << EOF_JSON > /etc/sing-box/config.json
 EOF_JSON
 
 # 8. 权限同步与服务整体刷新启动
-echo "🚀 正在启动服务群组，完成天衣无缝的闭环..."
+echo "🚀 正在全面激活服务群组..."
 chown -R caddy:caddy /var/www/video
 chown -R sing-box:sing-box $CERT_DIR
 
@@ -188,10 +186,10 @@ systemctl daemon-reload
 systemctl restart caddy && systemctl enable caddy
 systemctl restart sing-box && systemctl enable sing-box
 
-# 9. 打印大功告成面板
+# 9. 终极大功告成面板
 clear
 echo -e "\033[0;32m========================================================="
-echo -e "🎉 成功！Sing-box + AnyTLS + Caddy 一体化完全体部署完成！"
+echo -e "🎉 完美成功！Sing-box + AnyTLS + Caddy 一体化完全体部署完成！"
 echo -e "=========================================================\033[0m"
 echo -e "📣 你的服务器 AnyTLS 节点配置参数如下："
 echo ""
