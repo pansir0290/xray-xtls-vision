@@ -71,7 +71,7 @@ rm -rf /var/www/video && mkdir -p /var/www/video
 dd if=/dev/zero of=/var/www/video/Tokyo_Night_1080P.mp4 bs=1M count=100 2>/dev/null
 dd if=/dev/zero of=/var/www/video/Cinematic_4K_Trailer.mkv bs=1M count=150 2>/dev/null
 
-# 写入纯净无后门的暗黑科技风 index.html
+# 写入纯净的暗黑科技风 index.html
 cat << 'EOF_HTML' > /var/www/video/index.html
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -137,7 +137,7 @@ mkdir -p $CERT_DIR
     --key-file $CERT_DIR/private.key \
     --reloadcmd "chown -R sing-box:sing-box $CERT_DIR && systemctl restart sing-box"
 
-# 7. 配置 Sing-box 入站（全新升级：移除过时的根部 fallback，完美兼容新版内核）
+# 7. 配置 Sing-box 入站与正确的出站（符合新版规范的 detours 回落设计）
 echo "⚙️  正在生成符合新版规范的 Sing-box 核心配置文件..."
 PASSWORD=$(tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c 16)
 mkdir -p /etc/sing-box
@@ -164,7 +164,8 @@ cat << EOF_JSON > /etc/sing-box/config.json
         "enabled": true,
         "server_name": "$DOMAIN",
         "certificate_path": "$CERT_DIR/fullchain.pem",
-        "key_path": "$CERT_DIR/private.key"
+        "key_path": "$CERT_DIR/private.key",
+        "detour": "fallback-to-caddy"
       }
     }
   ],
@@ -172,6 +173,12 @@ cat << EOF_JSON > /etc/sing-box/config.json
     {
       "type": "direct",
       "tag": "direct"
+    },
+    {
+      "type": "direct",
+      "tag": "fallback-to-caddy",
+      "override_address": "127.0.0.1",
+      "override_port": 8080
     }
   ]
 }
